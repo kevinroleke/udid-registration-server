@@ -2,17 +2,49 @@ import Hummingbird
 import Mustache
 import Foundation
 import DotEnv
+import JWTKit
+import CryptoKit
+
 let library = try await MustacheLibrary(directory: "Resources")
+
 let path = ".env"
-var env = try DotEnv.load(path: path)
-print(env)
+try DotEnv.load(path: path)
+
 let apiKey = ProcessInfo.processInfo.environment["APPLE_API_KEY"]!
 let issuerID = ProcessInfo.processInfo.environment["APPLE_ISSUER_ID"]!
+let authKeyPath = ProcessInfo.processInfo.environment["APPLE_AUTHKEY_PATH"]!
 let serverUrl = ProcessInfo.processInfo.environment["SERVER_URL"]!
 let signerPath = ProcessInfo.processInfo.environment["SIGNER_PATH"]!
 let privKeyPath = ProcessInfo.processInfo.environment["PRIVKEY_PATH"]!
 let certFilePath = ProcessInfo.processInfo.environment["CERTFILE_PATH"]!
 let openSSLPath = ProcessInfo.processInfo.environment["OPENSSL_PATH"]!
+let finalURL = ProcessInfo.processInfo.environment["FINAL_URL"]!
+
+let authKey = try String(contentsOf: URL(filePath: authKeyPath), encoding: .utf8)
+let trimmedKey = authKey
+        .replacingOccurrences(of: "-----BEGIN PRIVATE KEY-----", with: "")
+        .replacingOccurrences(of: "-----END PRIVATE KEY-----", with: "")
+        .replacingOccurrences(of: "\n", with: "")
+print(trimmedKey)
+
+let key = try JWTKit.ES256PrivateKey(pem: authKey)
+let keys = JWTKeyCollection()
+await keys.add(ecdsa: key, kid: JWKIdentifier(string: apiKey))
+
+struct DeviceAttributes: Codable {
+    let udid: String
+    let name: String
+    let platform: String
+}
+
+struct DeviceData: Codable {
+    let type: String
+    let attributes: DeviceAttributes
+}
+
+struct DeviceRequest: Codable {
+    let data: DeviceData
+}
 
 struct HTML: ResponseGenerator {
     let html: String
@@ -23,54 +55,75 @@ struct HTML: ResponseGenerator {
     }
 }
 
-struct Device: Codable {
-    let id: String
-    let name: String
-    let platform: String
+struct MyJWT: JWTPayload {
+    var exp: ExpirationClaim
+    var iss: IssuerClaim
+    var aud: AudienceClaim
+    var iat: IssuedAtClaim
+
+    init(issuerId: String) {
+        self.exp = ExpirationClaim(value: Date().addingTimeInterval(20 * 60))
+        self.iat = IssuedAtClaim(value: Date())
+        self.iss = IssuerClaim(value: issuerId)
+        self.aud = AudienceClaim(value: "appstoreconnect-v1")
+    }
+
+    func verify(using key: some JWTAlgorithm) throws {
+        try self.exp.verifyNotExpired()
+    }
 }
 
-func createJWT(apiKey: String, issuerID: String) -> String {
-    // Generate JWT token here (this requires a library like JWTKit or similar)
-    return "your_jwt_token"
+func createJWT(appleKeyId: String, issuerId: String) async -> String? {
+    do {
+
+        let payload = MyJWT(issuerId: issuerId)
+        let jwt = try await keys.sign(payload, header: JWTHeader(fields: ["kid": JWTHeaderField(stringLiteral: appleKeyId)]))
+        return jwt
+    } catch {
+        print("Error signing JWT: \(error)")
+        return nil
+    }
 }
 
-func addDevice(name: String, platform: String) {
+func addDevice(name: String, platform: String, udid: String) async -> Bool {
     let url = URL(string: "https://api.appstoreconnect.apple.com/v1/devices")!
 
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.setValue("Bearer \(createJWT(apiKey: apiKey, issuerID: issuerID))", forHTTPHeaderField: "Authorization")
 
-    let device = Device(id: UUID().uuidString, name: name, platform: platform)
+    guard let jwtToken = await createJWT(appleKeyId: apiKey, issuerId: issuerID) else {
+        return false
+    }
+    print(jwtToken)
+
+    request.setValue("Bearer \(jwtToken)", forHTTPHeaderField: "Authorization")
+    let attributes = DeviceAttributes(udid: udid, name: name, platform: platform)
+    let deviceData = DeviceData(type: "devices", attributes: attributes)
+    let deviceRequest = DeviceRequest(data: deviceData)
+
     do {
-        let jsonData = try JSONEncoder().encode(["data": ["type": "devices", "attributes": ""]])
+        let jsonData = try JSONEncoder().encode(deviceRequest)
         request.httpBody = jsonData
     } catch {
         print("Error encoding device data: \(error)")
-        return
+        return false
     }
 
-    let task = URLSession.shared.dataTask(with: request) { data, response, error in
-        if let error = error {
-            print("Error adding device: \(error.localizedDescription)")
-            return
+    do {
+        let (_, response) = try await URLSession.shared.data(for: request)
+        if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
+            return true
+        } else {
+            print("Unexpected response: \(String(describing: response))")
+            return false
         }
-        guard let data = data else {
-            print("No data received")
-            return
-        }
-
-        do {
-            let responseObject = try JSONDecoder().decode(Device.self, from: data)
-            print("Device added: \(responseObject)")
-        } catch {
-            print("Error decoding response: \(error)")
-        }
+    } catch {
+        print("API request error: \(error)")
+        return false
     }
-
-    task.resume()
 }
+
 
 func signMobileConfig(mobileconfig: String) throws -> Hummingbird.ByteBuffer {
     let fileManager = FileManager.default
@@ -127,17 +180,25 @@ router.post("/register-udid/:uuid") { req, ctx async throws -> Response in
         if udid?.count ?? 0 < 1 {
             throw HTTPError(.badRequest, message: "Fuck you")
         }
-        return Response.redirect(to: "\(serverUrl)/apply-udid/\(udid![0])", type: .permanent)
+        return Response.redirect(to: "\(serverUrl)/apply-udid/\(udid![0])/\(uuid)", type: .permanent)
     } catch {
         throw HTTPError(.badRequest, message: "Fuck you")
     }
 }
-router.get("/apply-udid/:udid") { request, ctx throws -> String in
+router.get("/apply-udid/:udid/:uuid") { request, ctx async throws -> Response in
     let udid = try ctx.parameters.require("udid", as: String.self)
-    return udid
+    let uuid = try ctx.parameters.require("uuid", as: String.self)
+    let suc = await addDevice(name: uuid, platform: "IOS", udid: udid)
+    if suc {
+        return Response.redirect(to: finalURL)
+    }
+    return Response.redirect(to: "\(serverUrl)/error")
 }
 router.get("/") { request, ctx -> HTML in
     return HTML(html: library.render([], withTemplate: "index") ?? String("abject failure"))
+}
+router.get("/error") { _, _ -> String in
+    return "There was an error"
 }
 // create application using router
 let app = Application(

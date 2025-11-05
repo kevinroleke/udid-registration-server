@@ -1,5 +1,5 @@
 {
-  "originHash" : "4682fdeb25e2ab554fea087f8f2da2714df32612b76e3545a2abd2ecf5a70478",
+  "originHash" : "d6ca7dc225715a6c2855081493c2be6a2306b34bcba069e193f9e50df3ea809e",
   "pins" : [
     {
       "identity" : "async-http-client",
@@ -26,6 +26,15 @@
       "state" : {
         "revision" : "63689a57cbebf72c50cb9d702a4c69fb79f51d5d",
         "version" : "2.17.0"
+      }
+    },
+    {
+      "identity" : "jwt-kit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/vapor/jwt-kit.git",
+      "state" : {
+        "revision" : "2033b3e661238dda3d30e36a2d40987499d987de",
+        "version" : "5.2.0"
       }
     },
     {
@@ -87,8 +96,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-crypto.git",
       "state" : {
-        "revision" : "e8ed8867ec23bccf5f3bb9342148fa8deaff9b49",
-        "version" : "4.1.0"
+        "revision" : "95ba0316a9b733e92bb6b071255ff46263bbe7dc",
+        "version" : "3.15.1"
       }
     },
     {
