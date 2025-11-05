@@ -51,10 +51,22 @@ router.get("/get-udid.mobileconfig") { request, _ -> Hummingbird.ByteBuffer in
 
     return try! signMobileConfig(mobileconfig: mobileconfig!)
 }
-router.get("/register-udid/:uuid") { request, ctx -> String in
+router.post("/register-udid/:uuid") { req, ctx async throws -> Response in
+    // get raw request body
     let uuid = try ctx.parameters.require("uuid", as: String.self)
+    var buf = Hummingbird.ByteBuffer()
+    try await req.body.collect(upTo: 10000, into: &buf)
     print(uuid)
-    return uuid
+    print(buf)
+    let s: String? = buf.getString(at: 64, length: 380, encoding: .utf8)
+    let fs = s?.split(separator: "<key>UDID</key>\n\t<string>")[1] ?? ""
+    let udid = fs.split(separator: "</string>")[0]
+    print(udid)
+
+    return .init(
+        status: .ok,
+        headers: .init()
+    )
 }
 router.get("/") { request, ctx -> HTML in
     return HTML(html: library.render([], withTemplate: "index") ?? String("abject failure"))
