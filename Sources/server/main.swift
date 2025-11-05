@@ -106,10 +106,11 @@ func addDevice(name: String, platform: String, udid: String) async -> Bool {
     }
 
     do {
-        let (_, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await URLSession.shared.data(for: request)
         if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
             return true
         } else {
+            print(data.base64EncodedString())
             print("Unexpected response: \(String(describing: response))")
             return false
         }
@@ -174,7 +175,7 @@ router.post("/register-udid/:uuid") { req, ctx async throws -> Response in
         if udid?.count ?? 0 < 1 {
             throw HTTPError(.badRequest, message: "Fuck you")
         }
-        return Response.redirect(to: "\(serverUrl)/apply-udid/\(udid![0])/\(uuid)", type: .permanent)
+        return Response.redirect(to: "\(serverUrl)/apply-udid/\(String(data: udid![0], encoding: .utf8)!)/\(uuid)", type: .permanent)
     } catch {
         throw HTTPError(.badRequest, message: "Fuck you")
     }
@@ -182,6 +183,7 @@ router.post("/register-udid/:uuid") { req, ctx async throws -> Response in
 router.get("/apply-udid/:udid/:uuid") { request, ctx async throws -> Response in
     let udid = try ctx.parameters.require("udid", as: String.self)
     let uuid = try ctx.parameters.require("uuid", as: String.self)
+    print("The udid", udid)
     let suc = await addDevice(name: uuid, platform: "IOS", udid: udid)
     if suc {
         return Response.redirect(to: finalURL)
