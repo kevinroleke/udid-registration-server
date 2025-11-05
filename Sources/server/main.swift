@@ -21,11 +21,6 @@ let openSSLPath = ProcessInfo.processInfo.environment["OPENSSL_PATH"]!
 let finalURL = ProcessInfo.processInfo.environment["FINAL_URL"]!
 
 let authKey = try String(contentsOf: URL(filePath: authKeyPath), encoding: .utf8)
-let trimmedKey = authKey
-        .replacingOccurrences(of: "-----BEGIN PRIVATE KEY-----", with: "")
-        .replacingOccurrences(of: "-----END PRIVATE KEY-----", with: "")
-        .replacingOccurrences(of: "\n", with: "")
-print(trimmedKey)
 
 let key = try JWTKit.ES256PrivateKey(pem: authKey)
 let keys = JWTKeyCollection()
