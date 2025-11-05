@@ -1,10 +1,15 @@
 import Hummingbird
 import Mustache
+import Foundation
 let library = try await MustacheLibrary(directory: "Resources")
 
 let router = Router()
-router.get("profile") { request, _ -> String in
-    return "Hello"
+router.get("/get-udid.mobileconfig") { request, _ -> String in
+    let requestUUID = UUID().uuidString
+    let mobileconfig = library.render([
+        "uuid": requestUUID,
+    ], withTemplate: "get-udid.mobileconfig")
+    return mobileconfig ?? String("abject failure")
 }
 // create application using router
 let app = Application(
