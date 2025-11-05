@@ -164,14 +164,13 @@ router.post("/register-udid/:uuid") { req, ctx async throws -> Response in
     var buf = Hummingbird.ByteBuffer()
     try await req.body.collect(upTo: 10000, into: &buf)
     print(uuid)
-    print(buf)
     do {
-        let s: String? = buf.getString(at: 64, length: 380, encoding: .utf8)
-        let fs = s?.split(separator: "<key>UDID</key>\n\t<string>")
+        let data = buf.readData(length: 3000)
+        let fs = data?.split(separator: "<key>UDID</key>\n\t<string>".data(using: .utf8)!)
         if fs?.count ?? 0 < 2 {
             throw HTTPError(.badRequest, message: "Fuck you")
         }
-        let udid = fs?[1].split(separator: "</string>")
+        let udid = fs?[1].split(separator: "</string>".data(using: .utf8)!)
         if udid?.count ?? 0 < 1 {
             throw HTTPError(.badRequest, message: "Fuck you")
         }
