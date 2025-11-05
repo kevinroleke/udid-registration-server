@@ -10,10 +10,12 @@ This is for:
 
 ## Setup
 
+1. Create the configuration file
 ```bash
 cp env.example .env
 ```
 
+2. Edit the configuration file (everything is required)
 ```bash
 # This is the "Key ID" from App Store Connect
 APPLE_API_KEY=
@@ -21,6 +23,7 @@ APPLE_API_KEY=
 APPLE_ISSUER_ID=your_issuer_id
 # This is the private API key downloaded from App Store Connect
 APPLE_AUTHKEY_PATH=../AuthKey.p8
+# The https URL where this server exists
 SERVER_URL=https://udid.zerogon.consulting
 # This is your distribution/development public key in PEM format
 # Get it by exporting the certificate in Keychain Access then running the following
@@ -36,4 +39,9 @@ OPENSSL_PATH=/opt/homebrew/bin/openssl
 CERTFILE_PATH=../your_cert.pem
 # Where user gets redirected after having their UDID added to the account. I am using a manifest.plist which links to a signed .ipa for download.
 FINAL_URL=itms-services://?action=download-manifest&url=https://zerogon.consulting/manifest.plist
+```
+
+3. Run the server
+```bash
+swift run
 ```
