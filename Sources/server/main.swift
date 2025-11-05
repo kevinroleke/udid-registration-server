@@ -52,21 +52,29 @@ router.get("/get-udid.mobileconfig") { request, _ -> Hummingbird.ByteBuffer in
     return try! signMobileConfig(mobileconfig: mobileconfig!)
 }
 router.post("/register-udid/:uuid") { req, ctx async throws -> Response in
-    // get raw request body
     let uuid = try ctx.parameters.require("uuid", as: String.self)
     var buf = Hummingbird.ByteBuffer()
     try await req.body.collect(upTo: 10000, into: &buf)
     print(uuid)
     print(buf)
-    let s: String? = buf.getString(at: 64, length: 380, encoding: .utf8)
-    let fs = s?.split(separator: "<key>UDID</key>\n\t<string>")[1] ?? ""
-    let udid = fs.split(separator: "</string>")[0]
-    print(udid)
-
-    return .init(
-        status: .ok,
-        headers: .init()
-    )
+    do {
+        let s: String? = buf.getString(at: 64, length: 380, encoding: .utf8)
+        let fs = s?.split(separator: "<key>UDID</key>\n\t<string>")
+        if fs?.count ?? 0 < 2 {
+            throw HTTPError(.badRequest, message: "Fuck you")
+        }
+        let udid = fs?[1].split(separator: "</string>")
+        if udid?.count ?? 0 < 1 {
+            throw HTTPError(.badRequest, message: "Fuck you")
+        }
+        return Response.redirect(to: "https://udid.zerogon.consulting/apply-udid/\(udid![0])", type: .permanent)
+    } catch {
+        throw HTTPError(.badRequest, message: "Fuck you")
+    }
+}
+router.get("/apply-udid/:udid") { request, ctx throws -> String in
+    let udid = try ctx.parameters.require("udid", as: String.self)
+    return udid
 }
 router.get("/") { request, ctx -> HTML in
     return HTML(html: library.render([], withTemplate: "index") ?? String("abject failure"))
