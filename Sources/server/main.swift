@@ -110,6 +110,9 @@ func addDevice(name: String, platform: String, udid: String) async -> Bool {
         if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
             return true
         } else {
+            if data.contains("already exists on this team".data(using: .utf8)!) {
+                return true // this counts
+            }
             print(data.base64EncodedString())
             print("Unexpected response: \(String(describing: response))")
             return false
