@@ -1,7 +1,18 @@
 import Hummingbird
 import Mustache
 import Foundation
+import DotEnv
 let library = try await MustacheLibrary(directory: "Resources")
+let path = ".env"
+var env = try DotEnv.load(path: path)
+print(env)
+let apiKey = ProcessInfo.processInfo.environment["APPLE_API_KEY"]!
+let issuerID = ProcessInfo.processInfo.environment["APPLE_ISSUER_ID"]!
+let serverUrl = ProcessInfo.processInfo.environment["SERVER_URL"]!
+let signerPath = ProcessInfo.processInfo.environment["SIGNER_PATH"]!
+let privKeyPath = ProcessInfo.processInfo.environment["PRIVKEY_PATH"]!
+let certFilePath = ProcessInfo.processInfo.environment["CERTFILE_PATH"]!
+let openSSLPath = ProcessInfo.processInfo.environment["OPENSSL_PATH"]!
 
 struct HTML: ResponseGenerator {
     let html: String
@@ -10,6 +21,55 @@ struct HTML: ResponseGenerator {
         let buffer = ByteBuffer(string: self.html)
         return .init(status: .ok, headers: [.contentType: "text/html"], body: .init(byteBuffer: buffer))
     }
+}
+
+struct Device: Codable {
+    let id: String
+    let name: String
+    let platform: String
+}
+
+func createJWT(apiKey: String, issuerID: String) -> String {
+    // Generate JWT token here (this requires a library like JWTKit or similar)
+    return "your_jwt_token"
+}
+
+func addDevice(name: String, platform: String) {
+    let url = URL(string: "https://api.appstoreconnect.apple.com/v1/devices")!
+
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+    request.setValue("Bearer \(createJWT(apiKey: apiKey, issuerID: issuerID))", forHTTPHeaderField: "Authorization")
+
+    let device = Device(id: UUID().uuidString, name: name, platform: platform)
+    do {
+        let jsonData = try JSONEncoder().encode(["data": ["type": "devices", "attributes": ""]])
+        request.httpBody = jsonData
+    } catch {
+        print("Error encoding device data: \(error)")
+        return
+    }
+
+    let task = URLSession.shared.dataTask(with: request) { data, response, error in
+        if let error = error {
+            print("Error adding device: \(error.localizedDescription)")
+            return
+        }
+        guard let data = data else {
+            print("No data received")
+            return
+        }
+
+        do {
+            let responseObject = try JSONDecoder().decode(Device.self, from: data)
+            print("Device added: \(responseObject)")
+        } catch {
+            print("Error decoding response: \(error)")
+        }
+    }
+
+    task.resume()
 }
 
 func signMobileConfig(mobileconfig: String) throws -> Hummingbird.ByteBuffer {
@@ -24,11 +84,11 @@ func signMobileConfig(mobileconfig: String) throws -> Hummingbird.ByteBuffer {
 
     task.arguments = ["smime", "-sign", "-in", "./Temp/\(randomUUID)",
   "-out", "./Temp/\(randomUUID).signed",
-  "-signer", "../your-pub-cert.pem",
-  "-inkey", "../your-priv-key.pem",
-  "-certfile", "../your_cert.pem",
+  "-signer", signerPath,
+  "-inkey", privKeyPath,
+  "-certfile", certFilePath,
   "-outform", "der", "-nodetach"]
-    task.launchPath = "/opt/homebrew/bin/openssl"
+    task.launchPath = openSSLPath
     task.standardInput = nil
     try task.run()
     task.waitUntilExit()
@@ -46,7 +106,7 @@ router.get("/get-udid.mobileconfig") { request, _ -> Hummingbird.ByteBuffer in
     let requestUUID = UUID().uuidString
     let mobileconfig = library.render([
         "uuid": requestUUID,
-        "server": "https://udid.zerogon.consulting",
+        "server": serverUrl,
     ], withTemplate: "get-udid.mobileconfig")
 
     return try! signMobileConfig(mobileconfig: mobileconfig!)
@@ -67,7 +127,7 @@ router.post("/register-udid/:uuid") { req, ctx async throws -> Response in
         if udid?.count ?? 0 < 1 {
             throw HTTPError(.badRequest, message: "Fuck you")
         }
-        return Response.redirect(to: "https://udid.zerogon.consulting/apply-udid/\(udid![0])", type: .permanent)
+        return Response.redirect(to: "\(serverUrl)/apply-udid/\(udid![0])", type: .permanent)
     } catch {
         throw HTTPError(.badRequest, message: "Fuck you")
     }
