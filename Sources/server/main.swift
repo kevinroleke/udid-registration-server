@@ -1,8 +1,9 @@
 import Hummingbird
+import Mustache
+let library = try await MustacheLibrary(directory: "Resources")
 
-// create router and add a single GET /hello route
 let router = Router()
-router.get("hello") { request, _ -> String in
+router.get("profile") { request, _ -> String in
     return "Hello"
 }
 // create application using router
