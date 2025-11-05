@@ -2,7 +2,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "server",
+    name: "udid-server",
     platforms: [
        .macOS(.v13)
     ],
